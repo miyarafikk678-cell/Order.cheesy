@@ -1,0 +1,210 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wastage Sheet — 1 Month</title>
+  <style>
+    :root{--accent:#2563eb;--muted:#6b7280}
+    body{font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0; padding:24px; background:#f7fafc; color:#0f172a}
+    .container{max-width:980px;margin:0 auto;background:#fff;padding:20px;border-radius:12px;box-shadow:0 6px 18px rgba(15,23,42,0.06)}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between}
+    h1{font-size:20px;margin:0}
+    .controls{display:flex;gap:8px;align-items:center}
+    select,input[type="month"]{padding:8px;border-radius:8px;border:1px solid #e6edf3}
+    button{background:var(--accent);color:#fff;border:0;padding:8px 12px;border-radius:8px;cursor:pointer}
+    button.ghost{background:transparent;color:var(--accent);border:1px solid #e6edf3}
+    table{width:100%;border-collapse:collapse;margin-top:16px}
+    th,td{padding:10px;border-bottom:1px solid #eef2f7;text-align:left}
+    th{background:#fbfdff;font-weight:600}
+    .actions{display:flex;gap:6px}
+    .small{padding:6px 8px;font-size:13px}
+    .summary{display:flex;gap:12px;align-items:center;margin-top:12px}
+    .card{background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #eef2f7}
+    .empty{padding:40px;text-align:center;color:var(--muted)}
+    @media (max-width:640px){body{padding:12px}.controls{flex-wrap:wrap}}
+    input[type="number"]{width:100px}
+    .right{margin-left:auto}
+    .search{padding:8px;border-radius:8px;border:1px solid #e6edf3;width:220px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Wastage Sheet — 1 Month</h1>
+        <div style="color:var(--muted);font-size:13px;margin-top:6px">Track SN, Item name and Quantity. Save per month locally & export CSV.</div>
+      </div>
+      <div class="controls">
+        <label for="month">Month</label>
+        <input id="month" type="month" />
+        <input id="search" class="search" placeholder="Search name..." />
+        <button id="addRow" class="small">Add Row</button>
+        <button id="exportBtn" class="small ghost">Export CSV</button>
+        <button id="clearBtn" class="small ghost">Clear Month</button>
+      </div>
+    </header><main>
+  <div id="tableWrap"></div>
+
+  <div class="summary">
+    <div class="card">Total Entries: <strong id="totalCount">0</strong></div>
+    <div class="card">Total Quantity: <strong id="totalQty">0</strong></div>
+    <div class="right"><button id="printBtn" class="small">Print</button></div>
+  </div>
+</main>
+
+<footer style="margin-top:16px;color:var(--muted);font-size:13px">File saved to your browser (localStorage). To keep records centrally, see instructions below.</footer>
+
+<section style="margin-top:18px;background:#fff8eb;padding:12px;border-radius:8px;border:1px solid #fff0d9">
+  <strong>Notes:</strong>
+  <ul>
+    <li>Data is stored per month in your browser. Use "Export CSV" to save a copy.</li>
+    <li>To use a server-side database later, I can provide a Node/Express or PHP endpoint — tell me if you want that.</li>
+  </ul>
+</section>
+
+  </div>  <template id="tableTemplate">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:60px">SN</th>
+          <th>Name</th>
+          <th style="width:140px">Quantity</th>
+          <th style="width:160px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </template>  <script>
+    // --- Utilities
+    const el = id=>document.getElementById(id);
+    const formatKey = month => `wastage:${month}`;
+
+    // --- State
+    let rows = [];
+    const monthInput = el('month');
+    const tbodyParent = document.createElement('div');
+    const tableWrap = el('tableWrap');
+
+    // initialize month to current month
+    const now = new Date();
+    const mm = now.getMonth() + 1;
+    const yyyy = now.getFullYear();
+    monthInput.value = `${yyyy}-${String(mm).padStart(2,'0')}`;
+
+    function load() {
+      const key = formatKey(monthInput.value);
+      const raw = localStorage.getItem(key);
+      rows = raw ? JSON.parse(raw) : [];
+      renderTable();
+    }
+
+    function save() {
+      const key = formatKey(monthInput.value);
+      localStorage.setItem(key, JSON.stringify(rows));
+    }
+
+    function renderTable(filter=''){
+      tableWrap.innerHTML = '';
+      const tpl = document.getElementById('tableTemplate').content.cloneNode(true);
+      const tbody = tpl.querySelector('tbody');
+      if(rows.length === 0){
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.innerHTML = 'No entries for this month. Click "Add Row" to start.';
+        tableWrap.appendChild(empty);
+      } else {
+        rows.forEach((r, idx)=>{
+          if(filter && !r.name.toLowerCase().includes(filter.toLowerCase())) return;
+          const tr = document.createElement('tr');
+          const snTd = document.createElement('td'); snTd.textContent = idx+1;
+          const nameTd = document.createElement('td');
+          const nameInput = document.createElement('input');
+          nameInput.value = r.name;
+          nameInput.style.width = '100%';
+          nameInput.addEventListener('input', e=>{ r.name = e.target.value; save(); renderSummary(); });
+          nameTd.appendChild(nameInput);
+          const qtyTd = document.createElement('td');
+          const qtyInput = document.createElement('input');
+          qtyInput.type = 'number'; qtyInput.min = 0; qtyInput.value = r.quantity;
+          qtyInput.addEventListener('input', e=>{ r.quantity = Number(e.target.value||0); save(); renderSummary(); });
+          qtyTd.appendChild(qtyInput);
+          const actionsTd = document.createElement('td');
+          const delBtn = document.createElement('button'); delBtn.textContent='Delete'; delBtn.className='small ghost';
+          delBtn.addEventListener('click', ()=>{ if(confirm('Delete this row?')){ rows.splice(idx,1); save(); renderTable(el('search').value); }});
+          const upBtn = document.createElement('button'); upBtn.textContent='↑'; upBtn.className='small'; upBtn.style.marginRight='6px';
+          upBtn.addEventListener('click', ()=>{ if(idx>0){ [rows[idx-1],rows[idx]]=[rows[idx],rows[idx-1]]; save(); renderTable(el('search').value); }});
+          const downBtn = document.createElement('button'); downBtn.textContent='↓'; downBtn.className='small'; downBtn.style.marginRight='6px';
+          downBtn.addEventListener('click', ()=>{ if(idx<rows.length-1){ [rows[idx+1],rows[idx]]=[rows[idx],rows[idx+1]]; save(); renderTable(el('search').value); }});
+          actionsTd.appendChild(upBtn); actionsTd.appendChild(downBtn); actionsTd.appendChild(delBtn);
+
+          tr.appendChild(snTd); tr.appendChild(nameTd); tr.appendChild(qtyTd); tr.appendChild(actionsTd);
+          tbody.appendChild(tr);
+        });
+        tableWrap.appendChild(tpl);
+      }
+      renderSummary();
+    }
+
+    function renderSummary(){
+      el('totalCount').textContent = rows.length;
+      const total = rows.reduce((s,r)=>s + (Number(r.quantity)||0),0);
+      el('totalQty').textContent = total;
+    }
+
+    // --- Actions
+    el('addRow').addEventListener('click', ()=>{
+      rows.push({name:'', quantity:0}); save(); renderTable(el('search').value);
+      // focus last name input
+      setTimeout(()=>{ const inputs = document.querySelectorAll('tbody input[type="text"], tbody input[type="number"], tbody input'); if(inputs.length) inputs[inputs.length-2]?.focus(); },50);
+    });
+
+    el('exportBtn').addEventListener('click', ()=>{
+      if(rows.length===0){ alert('No rows to export'); return; }
+      const csv = toCSV(rows);
+      const blob = new Blob([csv],{type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `wastage-${monthInput.value}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    });
+
+    el('clearBtn').addEventListener('click', ()=>{
+      if(confirm('Clear all entries for this month?')){ rows = []; save(); renderTable(); }
+    });
+
+    el('printBtn').addEventListener('click', ()=>{
+      window.print();
+    });
+
+    monthInput.addEventListener('change', ()=>{ load(); });
+    el('search').addEventListener('input', e=>{ renderTable(e.target.value); });
+
+    function toCSV(data){
+      const header = ['SN','Name','Quantity'];
+      const lines = [header.join(',')];
+      data.forEach((r, idx)=>{
+        // escape commas and quotes
+        const name = `"${String(r.name).replace(/"/g,'""')}"`;
+        lines.push([idx+1, name, r.quantity].join(','));
+      });
+      return lines.join('\n');
+    }
+
+    // load initial
+    load();
+
+    // expose helper to quickly import CSV (developer use)
+    window.__importCSV = function(csvText){
+      const lines = csvText.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+      if(lines.length<=1) return;
+      const data = lines.slice(1).map(l=>{
+        // simple split on comma — handles quoted names that may contain commas
+        const parts = l.match(/(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|[^,])+/g).map(s=>s.replace(/^\"|\"$/g,'').replace(/\"\"/g,'\"'));
+        return {name:parts[1]||'', quantity:Number(parts[2]||0)};
+      });
+      rows = data; save(); renderTable();
+    };
+
+  </script></body>
+</html>
